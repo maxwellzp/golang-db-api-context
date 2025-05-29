@@ -29,7 +29,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("loading .env file: %w", err)
 	}
 
-	apiTimeout, err := time.ParseDuration(os.Getenv("API_TIMEOUT"))
+	apiTimeout, err := time.ParseDuration(os.Getenv("HTTP_TIMEOUT"))
 	if err != nil {
 		return nil, fmt.Errorf("parsing API timeout: %w", err)
 	}
