@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shopspring/decimal"
 	"io"
 	"maxwellzp/golang-db-api-context/pkg/config"
+	"maxwellzp/golang-db-api-context/pkg/models"
 	"net/http"
+	"time"
 )
 
 type Client struct {
@@ -18,6 +21,8 @@ type Client struct {
 func NewClient(cfg config.ApiConfig) *Client {
 	return &Client{
 		httpClient: &http.Client{
+			// HTTP client timeout (transport layer)
+			// For transport-layer safety net
 			Timeout: cfg.Timeout,
 		},
 		baseURL: cfg.URL,
@@ -28,13 +33,11 @@ func NewClient(cfg config.ApiConfig) *Client {
 type Response struct {
 	Result             string             `json:"result"`
 	TimeLastUpdateUnix int64              `json:"time_last_update_unix"`
-	TimeLastUpdateUTC  string             `json:"time_last_update_utc"`
-	TimeNextUpdateUnix int64              `json:"time_next_update_unix"`
-	TimeNextUpdateUTC  string             `json:"time_next_update_utc"`
 	ConversionRates    map[string]float64 `json:"conversion_rates"`
 }
 
-func (c *Client) GetExchangeRates(ctx context.Context, baseCurrency string) (*Response, error) {
+func (c *Client) GetExchangeRates(ctx context.Context, baseCurrency string) ([]models.ExchangeRate, error) {
+	// The stricter timeout wins. HTTP Client Timeout VS Context Timeout
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
@@ -63,5 +66,22 @@ func (c *Client) GetExchangeRates(ctx context.Context, baseCurrency string) (*Re
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
-	return &response, nil
+	if response.Result != "success" {
+		return nil, fmt.Errorf("error result: %s", response.Result)
+	}
+
+	rates := make([]models.ExchangeRate, 0, len(response.ConversionRates))
+	dateUpdated := time.Unix(response.TimeLastUpdateUnix, 0)
+	for currencyCode, rate := range response.ConversionRates {
+		rateD := decimal.NewFromFloat(rate)
+
+		rates = append(rates, models.ExchangeRate{
+			CurrencyCode:     currencyCode,
+			BaseCurrencyCode: baseCurrency,
+			Rate:             rateD,
+			DateUpdated:      dateUpdated,
+		})
+	}
+
+	return rates, nil
 }
